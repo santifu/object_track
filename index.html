@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seguimiento de Objetos con P5.js y ml5.js</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <script src="https://unpkg.com/ml5@0.6.1/dist/ml5.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 20px;
+            background-color: #f0f0f0;
+        }
+        #p5-canvas-container {
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+            background-color: #fff;
+        }
+        #controls {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            width: 640px; /* Match canvas width */
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .checkbox-container {
+            display: flex;
+            flex-wrap: wrap; /* Allow checkboxes to wrap */
+            gap: 10px;
+            max-height: 150px; /* Limit height and add scroll if many checkboxes */
+            overflow-y: auto;
+            padding: 5px 0;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+        }
+        .checkbox-container label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-right: 10px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.2s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>Seguimiento de Objetos en Tiempo Real</h1>
+    <div id="p5-canvas-container"></div>
+    <div id="controls">
+        <div class="control-group">
+            <label for="pointSizeSlider">Tamaño del Punto de Trayectoria:</label>
+            <input type="range" id="pointSizeSlider" min="1" max="20" value="5" step="1">
+            <span id="pointSizeValue">5</span>
+        </div>
+
+        <div class="control-group">
+            <p>Selecciona objetos a rastrear:</p>
+            <div id="checkboxes-container" class="checkbox-container">
+                <p>Cargando modelo y esperando detecciones...</p>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <button id="saveTrajectoryBtn">Guardar Trayectoria (PNG)</button>
+            <button id="clearTrajectoryBtn">Borrar Trayectoria</button>
+        </div>
+    </div>
+
+    <script>
+        let objectDetector;
+        let video;
+        let detections = [];
+        let trajectoryLayer;
+        let pointSizeSliderHTML; // Reference to the HTML slider
+        let pointSizeValueSpan; // To display current slider value
+        let selectedLabels = {};
+        let labelCheckboxes = {}; // To store the p5.dom checkbox elements
+        let checkboxesContainer;
+
+        function setup() {
+            // Create canvas inside a specific HTML div
+            let canvas = createCanvas(640, 480);
+            canvas.parent('p5-canvas-container');
+
+            video = createCapture(VIDEO);
+            video.size(640, 480);
+            video.hide();
+
+            trajectoryLayer = createGraphics(640, 480);
+            trajectoryLayer.clear(); // transparente
+
+            // Get references to HTML elements
+            pointSizeSliderHTML = document.getElementById('pointSizeSlider');
+            pointSizeValueSpan = document.getElementById('pointSizeValue');
+            checkboxesContainer = document.getElementById('checkboxes-container');
+
+            // Update point size display when slider moves
+            pointSizeSliderHTML.addEventListener('input', () => {
+                pointSizeValueSpan.innerText = pointSizeSliderHTML.value;
+            });
+
+            // Set up button listeners
+            document.getElementById('saveTrajectoryBtn').addEventListener('click', () => {
+                trajectoryLayer.save('trayectoria.png');
+            });
+            document.getElementById('clearTrajectoryBtn').addEventListener('click', () => {
+                trajectoryLayer.clear();
+                console.log('Trayectoria borrada.');
+            });
+
+            // Cargar el modelo
+            objectDetector = ml5.objectDetector('cocossd', modelReady);
+        }
+
+        function modelReady() {
+            console.log('Modelo cargado.');
+            // Clear initial loading message
+            checkboxesContainer.innerHTML = '';
+            video.elt.addEventListener('loadeddata', () => {
+                console.log('Video listo. Iniciando detección...');
+                detectObjects();
+            });
+        }
+
+        function detectObjects() {
+            objectDetector.detect(video, gotResults);
+        }
+
+        function gotResults(error, results) {
+            if (error) {
+                console.error(error);
+                return;
+            }
+            detections = results;
+
+            // Update checkboxes with new labels if any are found
+            updateLabelCheckboxes(detections);
+
+            detectObjects(); // loop
+        }
+
+        function updateLabelCheckboxes(currentDetections) {
+            for (let i = 0; i < currentDetections.length; i++) {
+                let obj = currentDetections[i];
+                if (!(obj.label in labelCheckboxes)) {
+                    addLabelCheckbox(obj.label);
+                }
+            }
+        }
+
+        function addLabelCheckbox(label) {
+            // Create a custom label and input element directly in HTML for more control
+            let labelDiv = document.createElement('label');
+            let checkboxInput = document.createElement('input');
+            checkboxInput.type = 'checkbox';
+            checkboxInput.value = label;
+            checkboxInput.id = 'checkbox-' + label.replace(/\s+/g, '-'); // Unique ID
+
+            let spanText = document.createElement('span');
+            spanText.innerText = label;
+
+            labelDiv.appendChild(checkboxInput);
+            labelDiv.appendChild(spanText);
+            checkboxesContainer.appendChild(labelDiv);
+
+            // Store references and handle change event
+            labelCheckboxes[label] = checkboxInput;
+            selectedLabels[label] = false; // Initialize selection state
+
+            checkboxInput.addEventListener('change', (event) => {
+                selectedLabels[label] = event.target.checked;
+                console.log(selectedLabels);
+            });
+        }
+
+        function draw() {
+            image(video, 0, 0);
+
+            // Draw bounding boxes and labels for all detected objects
+            for (let i = 0; i < detections.length; i++) {
+                let obj = detections[i];
+
+                stroke(0, 255, 0); // Green bounding box
+                strokeWeight(2);
+                noFill();
+                rect(obj.x, obj.y, obj.width, obj.height);
+
+                noStroke();
+                fill(255); // White text
+                textSize(16);
+                text(obj.label + ' ' + nfc(obj.confidence * 100, 2) + '%', obj.x + 5, obj.y + 15);
+
+                // Draw trajectories only for selected labels
+                if (selectedLabels[obj.label]) {
+                    let cx = obj.x + obj.width / 2;
+                    let cy = obj.y + obj.height / 2;
+                    // Get point size from HTML slider
+                    let pointSize = parseInt(pointSizeSliderHTML.value);
+
+                    trajectoryLayer.noStroke();
+                    trajectoryLayer.fill(255, 0, 255, 150); // Pinkish, semi-transparent points
+                    trajectoryLayer.ellipse(cx, cy, pointSize, pointSize);
+                }
+            }
+
+            // Mostrar la capa de trayectoria encima
+            image(trajectoryLayer, 0, 0);
+        }
+
+        // The keyPressed function is no longer strictly needed for 'T' and 'C' as we have buttons
+        // but can be kept for alternative input.
+        function keyPressed() {
+            if (key === 't' || key === 'T') {
+                trajectoryLayer.save('trayectoria.png');
+            }
+            if (key === 'c' || key === 'C') {
+                trajectoryLayer.clear();
+                console.log('Trayectoria borrada.');
+            }
+        }
+    </script>
+</body>
+</html>
