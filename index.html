@@ -204,8 +204,14 @@
         }
 
         function draw() {
-            // Display the current video frame on the canvas
+            // Push a new drawing state to apply transformations locally
+            push();
+            // Flip the video horizontally
+            translate(width, 0); // Move the origin to the right edge
+            scale(-1, 1);       // Flip horizontally
+            // Display the current video frame on the canvas (now flipped)
             image(video, 0, 0);
+            pop(); // Restore the original drawing state
 
             // Draw bounding boxes and labels for all detected objects
             for (let i = 0; i < detections.length; i++) {
@@ -219,22 +225,33 @@
                 noStroke();
                 fill(255); // White text
                 textSize(16);
+                // Adjust text position for flipped video if necessary,
+                // though bounding box coordinates often adjust automatically
                 text(obj.label + ' ' + nfc(obj.confidence * 100, 2) + '%', obj.x + 5, obj.y + 15);
 
                 // Draw trajectories only for selected labels
                 if (selectedLabels[obj.label]) {
                     let cx = obj.x + obj.width / 2;
                     let cy = obj.y + obj.height / 2;
+
+                    // IMPORTANT: To keep trajectory dots aligned with the *flipped* video,
+                    // we need to transform their X-coordinate as well.
+                    // The coordinate for the flipped view is `width - cx`.
+                    let flippedCx = width - cx;
+
                     // Get point size from the HTML slider's current value
                     let pointSize = parseInt(pointSizeSliderHTML.value);
 
                     trajectoryLayer.noStroke();
-                    trajectoryLayer.fill(255, 0, 255, 150); // Pinkish, semi-transparent points
-                    trajectoryLayer.ellipse(cx, cy, pointSize, pointSize);
+                    // Changed trajectory dot color to white
+                    trajectoryLayer.fill(255, 255, 255, 150); // White, semi-transparent points
+                    trajectoryLayer.ellipse(flippedCx, cy, pointSize, pointSize);
                 }
             }
 
             // Display the accumulated trajectory layer on top of the video feed
+            // This layer is *not* affected by the `push()/pop()` for the live video,
+            // so we need to draw it normally, with its internal coordinates correctly flipped.
             image(trajectoryLayer, 0, 0);
         }
 
