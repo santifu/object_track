@@ -1,539 +1,270 @@
 <!DOCTYPE html>
-
 <html lang="en">
-
 <head>
-
-    <meta charset="UTF-8">
-
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>Real-time Object Tracking</title>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
-
-    <script src="https://unpkg.com/ml5@0.6.1/dist/ml5.min.js"></script>
-
-    <style>
-
-        body {
-
-            font-family: Arial, sans-serif;
-
-            display: flex;
-
-            flex-direction: column;
-
-            align-items: center;
-
-            margin: 20px;
-
-            background-color: #f0f0f0;
-
-        }
-
-        #p5-canvas-container {
-
-            border: 1px solid #ccc;
-
-            margin-bottom: 20px;
-
-            background-color: #fff;
-
-        }
-
-        #controls {
-
-            background-color: #fff;
-
-            padding: 20px;
-
-            border-radius: 8px;
-
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-
-            width: 640px; /* Match canvas width */
-
-            display: flex;
-
-            flex-direction: column;
-
-            gap: 15px;
-
-        }
-
-        .control-group {
-
-            display: flex;
-
-            flex-direction: column;
-
-            gap: 5px;
-
-        }
-
-        .checkbox-container {
-
-            display: flex;
-
-            flex-wrap: wrap; /* Allow checkboxes to wrap */
-
-            gap: 10px;
-
-            max-height: 150px; /* Limit height and add scroll if many checkboxes */
-
-            overflow-y: auto;
-
-            padding: 5px 0;
-
-            border: 1px solid #eee;
-
-            border-radius: 4px;
-
-            background-color: #f9f9f9;
-
-        }
-
-        .checkbox-container label {
-
-            display: flex;
-
-            align-items: center;
-
-            gap: 5px;
-
-            margin-right: 10px; /* Spacing between checkboxes */
-
-        }
-
-        button {
-
-            padding: 10px 15px;
-
-            background-color: #007bff;
-
-            color: white;
-
-            border: none;
-
-            border-radius: 5px;
-
-            cursor: pointer;
-
-            font-size: 16px;
-
-            transition: background-color 0.2s ease;
-
-        }
-
-        button:hover {
-
-            background-color: #0056b3;
-
-        }
-
-    </style>
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Object Tracking</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <script src="https://unpkg.com/ml5@0.6.1/dist/ml5.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 20px;
+            background-color: #f0f0f0;
+        }
+        #p5-canvas-container {
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+            background-color: #fff;
+        }
+        #controls {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            width: 640px; /* Match canvas width */
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .checkbox-container {
+            display: flex;
+            flex-wrap: wrap; /* Allow checkboxes to wrap */
+            gap: 10px;
+            max-height: 150px; /* Limit height and add scroll if many checkboxes */
+            overflow-y: auto;
+            padding: 5px 0;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+        }
+        .checkbox-container label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-right: 10px; /* Spacing between checkboxes */
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.2s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
 </head>
-
 <body>
-
-    <h1>Real-time Object Tracking</h1>
-
-    <div id="p5-canvas-container"></div>
-
-    <div id="controls">
-
-        <div class="control-group">
-
-            <label for="pointSizeSlider">Trajectory Point Size:</label>
-
-            <input type="range" id="pointSizeSlider" min="1" max="20" value="5" step="1">
-
-            <span id="pointSizeValue">5</span>
-
-        </div>
-
-
-
-        <div class="control-group">
-
-            <p>Select objects to track:</p>
-
-            <div id="checkboxes-container" class="checkbox-container">
-
-                <p>Loading model and awaiting detections...</p>
-
-            </div>
-
-        </div>
-
-
-
-        <div class="control-group">
-
-            <button id="saveTrajectoryBtn">Save Trajectory (PNG)</button>
-
-            <button id="clearTrajectoryBtn">Clear Trajectory</button>
-
-        </div>
-
-    </div>
-
-
-
-    <script>
-
-        let objectDetector;
-
-        let video;
-
-        let detections = [];
-
-        let trajectoryLayer;
-
-        let pointSizeSliderHTML; // Reference to the HTML slider element
-
-        let pointSizeValueSpan;  // To display current slider value
-
-        let selectedLabels = {}; // To store which labels are selected for tracking
-
-        let labelCheckboxes = {}; // To store references to the HTML checkbox input elements
-
-        let checkboxesContainer; // Reference to the HTML div where checkboxes are added
-
-
-
-        function setup() {
-
-            // Create canvas inside a specific HTML div
-
-            let canvas = createCanvas(640, 480);
-
-            canvas.parent('p5-canvas-container'); // This connects the canvas to the HTML div
-
-
-
-            video = createCapture(VIDEO);
-
-            video.size(640, 480);
-
-            video.hide();
-
-
-
-            // Create a separate graphics layer for drawing trajectories (won't be cleared each frame)
-
-            trajectoryLayer = createGraphics(640, 480);
-
-            trajectoryLayer.clear(); // Make it transparent initially
-
-
-
-            // Get references to HTML elements by their IDs
-
-            pointSizeSliderHTML = document.getElementById('pointSizeSlider');
-
-            pointSizeValueSpan = document.getElementById('pointSizeValue');
-
-            checkboxesContainer = document.getElementById('checkboxes-container');
-
-
-
-            // Update point size display when the slider moves
-
-            pointSizeSliderHTML.addEventListener('input', () => {
-
-                pointSizeValueSpan.innerText = pointSizeSliderHTML.value;
-
-            });
-
-
-
-            // Set up button listeners
-
-            document.getElementById('saveTrajectoryBtn').addEventListener('click', () => {
-
-                trajectoryLayer.save('trajectory.png');
-
-            });
-
-            document.getElementById('clearTrajectoryBtn').addEventListener('click', () => {
-
-                trajectoryLayer.clear();
-
-                console.log('Trajectory cleared.');
-
-            });
-
-
-
-            // Load the pre-trained COCO-SSD object detection model
-
-            objectDetector = ml5.objectDetector('cocossd', modelReady);
-
-        }
-
-
-
-        function modelReady() {
-
-            console.log('Model loaded.');
-
-            // Clear initial loading message in the checkboxes container
-
-            checkboxesContainer.innerHTML = '';
-
-            // Ensure video is ready before starting detection
-
-            video.elt.addEventListener('loadeddata', () => {
-
-                console.log('Video ready. Starting detection...');
-
-                detectObjects();
-
-            });
-
-        }
-
-
-
-        function detectObjects() {
-
-            // Continuously detect objects in the video feed
-
-            objectDetector.detect(video, gotResults);
-
-        }
-
-
-
-        function gotResults(error, results) {
-
-            if (error) {
-
-                console.error(error);
-
-                return;
-
-            }
-
-            // Store the latest detection results
-
-            detections = results;
-
-
-
-            // Update the list of checkboxes if new object labels are detected
-
-            updateLabelCheckboxes(detections);
-
-
-
-            // Call detectObjects again to create a continuous detection loop
-
-            detectObjects();
-
-        }
-
-
-
-        function updateLabelCheckboxes(currentDetections) {
-
-            for (let i = 0; i < currentDetections.length; i++) {
-
-                let obj = currentDetections[i];
-
-                // If a label hasn't had a checkbox created yet, create one
-
-                if (!(obj.label in labelCheckboxes)) {
-
-                    addLabelCheckbox(obj.label);
-
-                }
-
-            }
-
-        }
-
-
-
-        function addLabelCheckbox(label) {
-
-            // Create custom label and input elements directly in HTML for more control
-
-            let labelDiv = document.createElement('label');
-
-            let checkboxInput = document.createElement('input');
-
-            checkboxInput.type = 'checkbox';
-
-            checkboxInput.value = label;
-
-            checkboxInput.id = 'checkbox-' + label.replace(/\s+/g, '-'); // Create a unique ID
-
-
-
-            let spanText = document.createElement('span');
-
-            spanText.innerText = label;
-
-
-
-            labelDiv.appendChild(checkboxInput);
-
-            labelDiv.appendChild(spanText);
-
-            checkboxesContainer.appendChild(labelDiv); // Add the label and checkbox to the container in HTML
-
-
-
-            // Store references and handle the change event for this new checkbox
-
-            labelCheckboxes[label] = checkboxInput;
-
-            selectedLabels[label] = false; // Initialize selection state to false
-
-
-
-            checkboxInput.addEventListener('change', (event) => {
-
-                selectedLabels[label] = event.target.checked; // Update selection status when checkbox is toggled
-
-                console.log(selectedLabels); // For debugging purposes
-
-            });
-
-        }
-
-
-
-        function draw() {
-
-            // Push a new drawing state to apply transformations locally
-
-            push();
-
-            // Flip the video horizontally
-
-            translate(width, 0); // Move the origin to the right edge
-
-            scale(-1, 1);       // Flip horizontally
-
-            // Display the current video frame on the canvas (now flipped)
-
-            image(video, 0, 0);
-
-            pop(); // Restore the original drawing state
-
-
-
-            // Draw bounding boxes and labels for all detected objects
-
-            for (let i = 0; i < detections.length; i++) {
-
-                let obj = detections[i];
-
-
-
-                stroke(0, 255, 0); // Green bounding box
-
-                strokeWeight(2);
-
-                noFill();
-
-                rect(obj.x, obj.y, obj.width, obj.height);
-
-
-
-                noStroke();
-
-                fill(255); // White text
-
-                textSize(16);
-
-                // Adjust text position for flipped video if necessary,
-
-                // though bounding box coordinates often adjust automatically
-
-                text(obj.label + ' ' + nfc(obj.confidence * 100, 2) + '%', obj.x + 5, obj.y + 15);
-
-
-
-                // Draw trajectories only for selected labels
-
-                if (selectedLabels[obj.label]) {
-
-                    let cx = obj.x + obj.width / 2;
-
-                    let cy = obj.y + obj.height / 2;
-
-
-
-                    // IMPORTANT: To keep trajectory dots aligned with the *flipped* video,
-
-                    // we need to transform their X-coordinate as well.
-
-                    // The coordinate for the flipped view is `width - cx`.
-
-                    let flippedCx = width - cx;
-
-
-
-                    // Get point size from the HTML slider's current value
-
-                    let pointSize = parseInt(pointSizeSliderHTML.value);
-
-
-
-                    trajectoryLayer.noStroke();
-
-                    // Changed trajectory dot color to white
-
-                    trajectoryLayer.fill(255, 255, 255, 150); // White, semi-transparent points
-
-                    trajectoryLayer.ellipse(flippedCx, cy, pointSize, pointSize);
-
-                }
-
-            }
-
-
-
-            // Display the accumulated trajectory layer on top of the video feed
-
-            // This layer is *not* affected by the `push()/pop()` for the live video,
-
-            // so we need to draw it normally, with its internal coordinates correctly flipped.
-
-            image(trajectoryLayer, 0, 0);
-
-        }
-
-
-
-        // Optional: Keep keyPressed for alternative input, though buttons are primary
-
-        function keyPressed() {
-
-            if (key === 't' || key === 'T') {
-
-                trajectoryLayer.save('trajectory.png');
-
-            }
-
-            if (key === 'c' || key === 'C') {
-
-                trajectoryLayer.clear();
-
-                console.log('Trajectory cleared.');
-
-            }
-
-        }
-
-    </script>
-
+    <h1>Real-time Object Tracking</h1>
+    <div id="p5-canvas-container"></div>
+    <div id="controls">
+        <div class="control-group">
+            <label for="pointSizeSlider">Trajectory Point Size:</label>
+            <input type="range" id="pointSizeSlider" min="1" max="60" value="5" step="1">
+            <span id="pointSizeValue">5</span>
+        </div>
+
+        <div class="control-group">
+            <p>Select objects to track:</p>
+            <div id="checkboxes-container" class="checkbox-container">
+                <p>Loading model and awaiting detections...</p>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <button id="saveTrajectoryBtn">Save Trajectory (PNG)</button>
+            <button id="clearTrajectoryBtn">Clear Trajectory</button>
+        </div>
+    </div>
+
+    <script>
+        let objectDetector;
+        let video;
+        let detections = [];
+        let trajectoryLayer;
+        let pointSizeSliderHTML; // Reference to the HTML slider element
+        let pointSizeValueSpan;  // To display current slider value
+        let selectedLabels = {}; // To store which labels are selected for tracking
+        let labelCheckboxes = {}; // To store references to the HTML checkbox input elements
+        let checkboxesContainer; // Reference to the HTML div where checkboxes are added
+
+        function setup() {
+            // Create canvas inside a specific HTML div
+            let canvas = createCanvas(640, 480);
+            canvas.parent('p5-canvas-container'); // This connects the canvas to the HTML div
+
+            video = createCapture(VIDEO);
+            video.size(640, 480);
+            video.hide();
+
+            // Create a separate graphics layer for drawing trajectories (won't be cleared each frame)
+            trajectoryLayer = createGraphics(640, 480);
+            trajectoryLayer.clear(); // Make it transparent initially
+
+            // Get references to HTML elements by their IDs
+            pointSizeSliderHTML = document.getElementById('pointSizeSlider');
+            pointSizeValueSpan = document.getElementById('pointSizeValue');
+            checkboxesContainer = document.getElementById('checkboxes-container');
+
+            // Update point size display when the slider moves
+            pointSizeSliderHTML.addEventListener('input', () => {
+                pointSizeValueSpan.innerText = pointSizeSliderHTML.value;
+            });
+
+            // Set up button listeners
+            document.getElementById('saveTrajectoryBtn').addEventListener('click', () => {
+                trajectoryLayer.save('trajectory.png');
+            });
+            document.getElementById('clearTrajectoryBtn').addEventListener('click', () => {
+                trajectoryLayer.clear();
+                console.log('Trajectory cleared.');
+            });
+
+            // Load the pre-trained COCO-SSD object detection model
+            objectDetector = ml5.objectDetector('cocossd', modelReady);
+        }
+
+        function modelReady() {
+            console.log('Model loaded.');
+            // Clear initial loading message in the checkboxes container
+            checkboxesContainer.innerHTML = '';
+            // Ensure video is ready before starting detection
+            video.elt.addEventListener('loadeddata', () => {
+                console.log('Video ready. Starting detection...');
+                detectObjects();
+            });
+        }
+
+        function detectObjects() {
+            // Continuously detect objects in the video feed
+            objectDetector.detect(video, gotResults);
+        }
+
+        function gotResults(error, results) {
+            if (error) {
+                console.error(error);
+                return;
+            }
+            // Store the latest detection results
+            detections = results;
+
+            // Update the list of checkboxes if new object labels are detected
+            updateLabelCheckboxes(detections);
+
+            // Call detectObjects again to create a continuous detection loop
+            detectObjects();
+        }
+
+        function updateLabelCheckboxes(currentDetections) {
+            for (let i = 0; i < currentDetections.length; i++) {
+                let obj = currentDetections[i];
+                // If a label hasn't had a checkbox created yet, create one
+                if (!(obj.label in labelCheckboxes)) {
+                    addLabelCheckbox(obj.label);
+                }
+            }
+        }
+
+        function addLabelCheckbox(label) {
+            // Create custom label and input elements directly in HTML for more control
+            let labelDiv = document.createElement('label');
+            let checkboxInput = document.createElement('input');
+            checkboxInput.type = 'checkbox';
+            checkboxInput.value = label;
+            checkboxInput.id = 'checkbox-' + label.replace(/\s+/g, '-'); // Create a unique ID
+
+            let spanText = document.createElement('span');
+            spanText.innerText = label;
+
+            labelDiv.appendChild(checkboxInput);
+            labelDiv.appendChild(spanText);
+            checkboxesContainer.appendChild(labelDiv); // Add the label and checkbox to the container in HTML
+
+            // Store references and handle the change event for this new checkbox
+            labelCheckboxes[label] = checkboxInput;
+            selectedLabels[label] = false; // Initialize selection state to false
+
+            checkboxInput.addEventListener('change', (event) => {
+                selectedLabels[label] = event.target.checked; // Update selection status when checkbox is toggled
+                console.log(selectedLabels); // For debugging purposes
+            });
+        }
+
+        function draw() {
+            // Push a new drawing state to apply transformations locally
+            push();
+            // Flip the video horizontally
+            translate(width, 0); // Move the origin to the right edge
+            scale(-1, 1);        // Flip horizontally
+            // Display the current video frame on the canvas (now flipped)
+            image(video, 0, 0);
+            pop(); // Restore the original drawing state
+
+            // Draw bounding boxes and labels for all detected objects
+            for (let i = 0; i < detections.length; i++) {
+                let obj = detections[i];
+
+                stroke(0, 255, 0); // Green bounding box
+                strokeWeight(2);
+                noFill();
+                rect(obj.x, obj.y, obj.width, obj.height);
+
+                noStroke();
+                fill(255); // White text
+                textSize(16);
+                // Adjust text position for flipped video if necessary,
+                // though bounding box coordinates often adjust automatically
+                text(obj.label + ' ' + nfc(obj.confidence * 100, 2) + '%', obj.x + 5, obj.y + 15);
+
+                // Draw trajectories only for selected labels
+                if (selectedLabels[obj.label]) {
+                    let cx = obj.x + obj.width / 2;
+                    let cy = obj.y + obj.height / 2;
+
+                    // IMPORTANT: To keep trajectory dots aligned with the *flipped* video,
+                    // we need to transform their X-coordinate as well.
+                    // The coordinate for the flipped view is `width - cx`.
+                    let flippedCx = width - cx;
+
+                    // Get point size from the HTML slider's current value
+                    let pointSize = parseInt(pointSizeSliderHTML.value);
+
+                    trajectoryLayer.noStroke();
+                    // Changed trajectory dot color to white
+                    trajectoryLayer.fill(255, 255, 255, 150); // White, semi-transparent points
+                    trajectoryLayer.ellipse(flippedCx, cy, pointSize, pointSize);
+                }
+            }
+
+            // Display the accumulated trajectory layer on top of the video feed
+            // This layer is *not* affected by the `push()/pop()` for the live video,
+            // so we need to draw it normally, with its internal coordinates correctly flipped.
+            image(trajectoryLayer, 0, 0);
+        }
+
+        // Optional: Keep keyPressed for alternative input, though buttons are primary
+        function keyPressed() {
+            if (key === 't' || key === 'T') {
+                trajectoryLayer.save('trajectory.png');
+            }
+            if (key === 'c' || key === 'C') {
+                trajectoryLayer.clear();
+                console.log('Trajectory cleared.');
+            }
+        }
+    </script>
 </body>
-
 </html>
